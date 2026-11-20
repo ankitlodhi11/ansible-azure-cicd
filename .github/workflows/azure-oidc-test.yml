@@ -1,12 +1,3 @@
-
-name: Azure OIDC Authentication Test
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
 permissions:
   id-token: write
   contents: read
@@ -16,17 +7,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Azure Login using OIDC
+      - name: Azure Login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Verify Azure Connection
-        run: |
-          az account show --output table
-          az group list --output table
+          auth-type: SERVICE_PRINCIPAL
