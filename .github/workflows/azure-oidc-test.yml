@@ -1,3 +1,52 @@
+
+name: Azure OIDC SSH Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ssh-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install SSH Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Get Azure VM Public IP
+        run: |
+          VM_IP=$(az vm show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_VM_NAME }}" \
+            --show-details \
+            --query publicIps -o tsv)
+
+          if [ -z "$VM_IP" ]; then
+            echo "Public IP not found"
+            exit 1
+          fi
+
+          echo "VM_IP=$VM_IP" >> "$GITHUB_ENV"
+          echo "VM Public IP fetched"
+
       - name: Test SSH Connectivity
         env:
           SSHPASS: ${{ secrets.VM_PASSWORD }}
