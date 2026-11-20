@@ -17,10 +17,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Step 1: Azure OIDC Authentication
+      # 2. Azure OIDC Login
       - name: Azure Login using OIDC
         uses: azure/login@v2
         with:
@@ -28,18 +29,24 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Step 2: Verify Azure
+      # 3. Verify Azure Connection
       - name: Verify Azure Connection
         run: |
           az account show --output table
 
-      # Step 3: Install Ansible and sshpass
+      # 4. Install Ansible and SSH password support
       - name: Install Ansible and SSH password support
         run: |
           sudo apt-get update
           sudo apt-get install -y ansible sshpass
 
-      # Step 4: Fetch Azure VM Public IP
+      # 5. Verify Ansible
+      - name: Verify Ansible Installation
+        run: |
+          ansible --version
+          sshpass -V
+
+      # 6. Get Azure VM Public IP
       - name: Get Azure VM Public IP
         run: |
           VM_IP=$(az vm show \
@@ -49,20 +56,21 @@ jobs:
             --query publicIps -o tsv)
 
           if [ -z "$VM_IP" ]; then
-            echo "VM Public IP not found"
+            echo "ERROR: VM Public IP not found"
             exit 1
           fi
 
           echo "VM_IP=$VM_IP" >> "$GITHUB_ENV"
+          echo "Azure VM Public IP fetched successfully"
 
-      # Step 5: Configure SSH
+      # 7. Configure SSH
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           ssh-keyscan -H "$VM_IP" >> ~/.ssh/known_hosts
 
-      # Step 6: Create Ansible Inventory
+      # 8. Generate Ansible Inventory
       - name: Generate Ansible Inventory
         env:
           VM_USER: ${{ secrets.VM_USERNAME }}
@@ -72,10 +80,17 @@ jobs:
 
           cat > inventory/hosts.ini <<EOF
           [webservers]
-          azure-vm ansible_host=${VM_IP} ansible_user=${VM_USER} ansible_password=${VM_PASS} ansible_connection=ssh
+          azure-vm ansible_host=${VM_IP} ansible_user=${VM_USER} ansible_password=${VM_PASS} ansible_connection=ssh ansible_ssh_common_args='-o StrictHostKeyChecking=yes'
           EOF
 
-      # Step 7: Validate Playbook
+      # 9. Test SSH Connectivity
+      - name: Test Ansible Connection
+        run: |
+          ansible webservers \
+            -i inventory/hosts.ini \
+            -m ping
+
+      # 10. Validate Playbook
       - name: Validate Ansible Playbook
         run: |
           ansible-playbook \
@@ -83,7 +98,7 @@ jobs:
             playbooks/deploy-nginx.yml \
             --syntax-check
 
-      # Step 8: Deploy Nginx
+      # 11. Deploy Nginx
       - name: Deploy Nginx
         env:
           VM_PASS: ${{ secrets.VM_PASSWORD }}
@@ -93,8 +108,8 @@ jobs:
             playbooks/deploy-nginx.yml \
             --extra-vars "ansible_become_password=$VM_PASS"
 
-      # Step 9: Verify Deployment
-      - name: Verify Nginx
+      # 12. Verify Nginx
+      - name: Verify Nginx Deployment
         run: |
           curl --fail --retry 10 --retry-delay 3 \
             "http://${VM_IP}/"
